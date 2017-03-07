@@ -81,11 +81,12 @@ class AmpBrightcove extends AMP.BaseElement {
       this.playerReadyResolver_ = resolve;
     });
 
-    // Resolve the ready promise if takes too long
+    // Warn if the player does not have video interface support
     this.readyTimeout_ = window.setTimeout(() => {
       user().warn(TAG, 'Ensure player has videojs-amp-support plugin');
-      this.playerReadyResolver_(this.iframe_);
-    }, 2000);
+    }, 3000);
+
+    this.playerReadyResolver_(this.iframe_);
   }
 
   /** @override */
@@ -175,7 +176,6 @@ class AmpBrightcove extends AMP.BaseElement {
         installVideoManagerForDoc(this.element);
         videoManagerForDoc(this.element).register(this);
         this.element.dispatchCustomEvent(VideoEvents.LOAD);
-        this.playerReadyResolver_(this.iframe_);
       }
       // Use play not playing: #7321
       if (data.event === 'play' || data.event === 'pause') {
