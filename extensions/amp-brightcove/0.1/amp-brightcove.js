@@ -149,8 +149,9 @@ class AmpBrightcove extends AMP.BaseElement {
        if (data.event === 'ready') {
          // Clear warning timeout
          window.clearTimeout(this.readyTimeout_);
-         dev().info(TAG, 'Player ready. Brightcove Player version: '
-         + `${data.bcVersion} AMP Support version: ${data.ampSupportVersion}`);
+         dev().info(TAG, `Player ${this.playerId} ready. `
+         + `Brightcove Player version: ${data.bcVersion} `
+         + `AMP Support version: ${data.ampSupportVersion}`);
          this.hasAmpSupport_ = true;
          installVideoManagerForDoc(this.element);
          Services.videoManagerForDoc(this.element).register(this);
