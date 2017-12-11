@@ -363,8 +363,7 @@ class AmpBrightcove extends AMP.BaseElement {
     if (!this.iframe_) {
       return;
     }
-
-    (dev().assertElement(this.iframe_));
+    console.log(fullscreenEnter(dev().assertElement(this.iframe_)));
   }
 
   /**
