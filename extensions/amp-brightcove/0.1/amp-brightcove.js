@@ -100,9 +100,11 @@ class AmpBrightcove extends AMP.BaseElement {
   /** @override */
   layoutCallback() {
     const iframe = this.element.ownerDocument.createElement('iframe');
+
     iframe.setAttribute('frameborder', '0');
     iframe.setAttribute('allowfullscreen', 'true');
     iframe.src = this.getIframeSrc_();
+
     this.applyFillContent(iframe);
     this.element.appendChild(iframe);
     this.iframe_ = iframe;
@@ -125,11 +127,11 @@ class AmpBrightcove extends AMP.BaseElement {
      this.iframe_.contentWindow./*OK*/postMessage(JSON.stringify({
        'command': command,
        'args': opt_args || '',
-     }), '*');
+     }), 'https://players.brightcove.net');
    }
 
    /** @private */
-   // TODO
+   
    handlePlayerMessages_(event) {
      if (event.origin != 'https://players.brightcove.net' ||
          event.source != this.iframe_.contentWindow) {
@@ -149,30 +151,36 @@ class AmpBrightcove extends AMP.BaseElement {
          // Clear warning timeout
          window.clearTimeout(this.readyTimeout_);
          dev().info(TAG, `Player ${this.playerId} ready. `
-         + `Brightcove Player version: ${data.bcVersion} `
-         + `AMP Support version: ${data.ampSupportVersion}`);
+           + `Brightcove Player version: ${data.bcVersion} `
+           + `AMP Support version: ${data.ampSupportVersion}`);
          this.hasAmpSupport_ = true;
          installVideoManagerForDoc(this.element);
          Services.videoManagerForDoc(this.element).register(this);
          this.element.dispatchCustomEvent(VideoEvents.LOAD);
        }
+
        if (data.event === 'playing') {
          this.playing_ = true;
          this.element.dispatchCustomEvent(VideoEvents.PLAYING);
        }
+
        if (data.event === 'pause') {
          this.playing_ = false;
          this.element.dispatchCustomEvent(VideoEvents.PAUSE);
        }
+
        if (data.event === 'ended') {
          this.element.dispatchCustomEvent(VideoEvents.ENDED);
        }
+
        if (data.event === 'ads-ad-started') {
          this.element.dispatchCustomEvent(VideoEvents.AD_START);
        }
+
        if (data.event === 'ads-ad-ended') {
          this.element.dispatchCustomEvent(VideoEvents.AD_END);
        }
+
        if (data.event === 'volumechange') {
          if (data.muted !== undefined) {
            this.muted_ = data.muted;
@@ -201,6 +209,7 @@ class AmpBrightcove extends AMP.BaseElement {
     let src = `https://players.brightcove.net/${encodeURIComponent(account)}`
       + `/${encodeURIComponent(this.playerId)}`
       + `_${encodeURIComponent(embed)}/index.html`;
+
     if (this.element.getAttribute('data-playlist-id')) {
       src += '?playlistId=';
       src += this.encodeId_(this.element.getAttribute('data-playlist-id'));
@@ -209,16 +218,7 @@ class AmpBrightcove extends AMP.BaseElement {
       src += this.encodeId_(this.element.getAttribute('data-video-id'));
     }
 
-    // autoplay attribute must be used for autoplay
-    user().assert(
-      !this.element.hasAttribute('data-param-autoplay'),
-      'Do not use data-param-autoplay with <amp-brightcove>, use autoplay instead %s',
-      this.element
-    );
-    this.element.removeAttribute('data-param-autoplay');
-    // Players in AMP play inline
     this.element.setAttribute('data-param-playsinline', 'true');
-
 
     // Pass through data-param-* attributes as params for plugin use
     src = addParamsToUrl(src, getDataParamsFromAttributes(this.element));
@@ -254,18 +254,9 @@ class AmpBrightcove extends AMP.BaseElement {
 
   /** @override */
   pauseCallback() {
-    // Only send pauseVideo command if the player is playing. Otherwise
-    // The player breaks if the user haven't played the video yet specially
-    // on mobile.
-    if (this.iframe_ && this.iframe_.contentWindow) {
-        if (this.hasAmpSupport_ && this.playing_) {
-          this.pause();
-        } else {
-          // Fallback for players without videojs-amp-support
-          // but which use the older plugin
-          this.iframe_.contentWindow./*OK*/postMessage(
-                 'pause', 'https://players.brightcove.net');
-        }
+    if (this.iframe_ && this.iframe_.contentWindow &&
+        this.hasAmpSupport_ && this.playing_) {
+      this.pause();
     }
   }
 
@@ -362,7 +353,7 @@ class AmpBrightcove extends AMP.BaseElement {
     if (!this.iframe_) {
       return;
     }
-    console.log(fullscreenEnter(dev().assertElement(this.iframe_)));
+    fullscreenEnter(dev().assertElement(this.iframe_));
   }
 
   /**
