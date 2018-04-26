@@ -14,22 +14,22 @@
  * limitations under the License.
  */
 
+import {Services} from '../../../src/services';
+import {VideoEvents} from '../../../src/video-interface';
 import {addParamsToUrl} from '../../../src/url';
+import {dev, user} from '../../../src/log';
+import {dict} from '../../../src/utils/object';
 import {
-  getDataParamsFromAttributes,
-  removeElement,
   fullscreenEnter,
   fullscreenExit,
+  getDataParamsFromAttributes,
   isFullscreenElement,
+  removeElement,
 } from '../../../src/dom';
-import {dev, user} from '../../../src/log';
-import {isObject} from '../../../src/types';
-import {
-  installVideoManagerForDoc,
-} from '../../../src/service/video-manager-impl';
-import {VideoEvents} from '../../../src/video-interface';
-import {Services} from '../../../src/services';
+import {getData, listen} from '../../../src/event-helper';
+import {installVideoManagerForDoc} from '../../../src/service/video-manager-impl';
 import {isLayoutSizeDefined} from '../../../src/layout';
+import {isObject} from '../../../src/types';
 import {startsWith} from '../../../src/string';
 import {tryParseJson} from '../../../src/json';
 
@@ -64,6 +64,12 @@ class AmpBrightcove extends AMP.BaseElement {
 
     /** @private {?number} */
     this.readyTimeout_ = null;
+
+    /** @private {?Function} */
+    this.unlistenMessage_ = null;
+
+    /**@private {?string} */
+    this.playerId_ = null;
   }
 
   /** @override */
@@ -76,10 +82,12 @@ class AmpBrightcove extends AMP.BaseElement {
     return isLayoutSizeDefined(layout);
   }
 
-   /** @override */
-   viewportCallback(visible) {
-     this.element.dispatchCustomEvent(VideoEvents.VISIBILITY, {visible});
-   }
+  /** @override */
+  viewportCallback(visible) {
+    this.element.dispatchCustomEvent(VideoEvents.VISIBILITY, {
+      visible,
+    });
+  }
 
   /** @override */
   buildCallback() {
@@ -92,8 +100,8 @@ class AmpBrightcove extends AMP.BaseElement {
     // Warn if the player does not have video interface support
     this.readyTimeout_ = window.setTimeout(() => {
       dev().warn(TAG,
-        `Did not receive ready callback from player ${this.playerId}.`
-        + ' Ensure it has the videojs-amp-support plugin configured.');
+          `Did not receive ready callback from player ${this.playerId_}.` +
+        ' Ensure it has the videojs-amp-support plugin configured.');
     }, 3000);
 
     this.playerReadyResolver_(this.iframe_);
@@ -111,89 +119,91 @@ class AmpBrightcove extends AMP.BaseElement {
     this.element.appendChild(iframe);
     this.iframe_ = iframe;
 
-     this.win.addEventListener(
-         'message', event => this.handlePlayerMessages_(event));
+    this.unlistenMessage_ = listen(
+        this.win,
+        'message',
+        this.handlePlayerMessages_.bind(this)
+    );
 
-     return this.loadPromise(iframe)
-       .then(() => this.playerReadyPromise_);
-   }
+    return this.loadPromise(iframe)
+        .then(() => this.playerReadyPromise_);
+  }
 
-   /**
-    * Sends a command to the player through postMessage.
-    * @param {string} command
-    * @param {Object=} opt_args
-    * @private
-    * */
-   // TODO
-   sendCommand_(command, opt_args) {
-     this.iframe_.contentWindow./*OK*/postMessage(JSON.stringify({
-       'command': command,
-       'args': opt_args || '',
-     }), 'https://players.brightcove.net');
-   }
+  /**
+   * Sends a command to the player through postMessage.
+   * @param {string} command
+   * @param {*=} arg
+   * @private
+   * */
+  sendCommand_(command, arg) {
+    this.iframe_.contentWindow. /*OK*/ postMessage(JSON.stringify(dict({
+      'command': command,
+      'args': arg,
+    })), 'https://players.brightcove.net');
+  }
 
-   /** @private */
-   
-   handlePlayerMessages_(event) {
-     if (event.origin != 'https://players.brightcove.net' ||
-         event.source != this.iframe_.contentWindow) {
-       return;
-     }
-     if (!getData(event) || !(isObject(getData(event))
-         || startsWith(/** @type {string} */ (getData(event)), '{'))) {
-       return; // Doesn't look like JSON.
-     }
-     /** @const {?JsonObject} */
-     const data = /** @type {?JsonObject} */ (isObject(getData(event))
-       ? getData(event)
-       : tryParseJson(getData(event)));
-     if (data === undefined) {
-       return; // We only process valid JSON.
-     }
+  /** @private */
 
-     if (data.event) {
-       if (data.event === 'ready') {
-         // Clear warning timeout
-         window.clearTimeout(this.readyTimeout_);
-         dev().info(TAG, `Player ${this.playerId} ready. `
-           + `Brightcove Player version: ${data.bcVersion} `
-           + `AMP Support version: ${data.ampSupportVersion}`);
-         this.hasAmpSupport_ = true;
-         installVideoManagerForDoc(this.element);
-         Services.videoManagerForDoc(this.element).register(this);
-         this.element.dispatchCustomEvent(VideoEvents.LOAD);
-       }
+  handlePlayerMessages_(event) {
+    if (event.origin != 'https://players.brightcove.net' ||
+      event.source != this.iframe_.contentWindow) {
+      return;
+    }
+    if (!getData(event) || !(isObject(getData(event)) ||
+        startsWith(/** @type {string} */ (getData(event)), '{'))) {
+      return; // Doesn't look like JSON.
+    }
+    /** @const {?JsonObject} */
+    const data = /** @type {?JsonObject} */ (isObject(getData(event)) ?
+      getData(event) :
+      tryParseJson(getData(event)));
+    if (data === undefined) {
+      return; // We only process valid JSON.
+    }
 
-       if (data.event === 'playing') {
-         this.playing_ = true;
-         this.element.dispatchCustomEvent(VideoEvents.PLAYING);
-       }
+    if (data['event']) {
+      if (data['event'] === 'ready') {
+        // Clear warning timeout
+        window.clearTimeout(this.readyTimeout_);
+        dev().info(TAG, `Player ${this.playerId_} ready. ` +
+          `Brightcove Player version: ${data['bcVersion']} ` +
+          `AMP Support version: ${data['ampSupportVersion']}`);
+        this.hasAmpSupport_ = true;
+        installVideoManagerForDoc(this.element);
+        Services.videoManagerForDoc(this.element).register(this);
+        this.element.dispatchCustomEvent(VideoEvents.LOAD);
+      }
 
-       if (data.event === 'pause') {
-         this.playing_ = false;
-         this.element.dispatchCustomEvent(VideoEvents.PAUSE);
-       }
+      if (data['event'] === 'playing') {
+        this.playing_ = true;
+        this.element.dispatchCustomEvent(VideoEvents.PLAYING);
+      }
 
-       if (data.event === 'ended') {
-         this.element.dispatchCustomEvent(VideoEvents.ENDED);
-       }
+      if (data['event'] === 'pause') {
+        this.playing_ = false;
+        this.element.dispatchCustomEvent(VideoEvents.PAUSE);
+      }
 
-       if (data.event === 'ads-ad-started') {
-         this.element.dispatchCustomEvent(VideoEvents.AD_START);
-       }
+      if (data['event'] === 'ended') {
+        this.element.dispatchCustomEvent(VideoEvents.ENDED);
+      }
 
-       if (data.event === 'ads-ad-ended') {
-         this.element.dispatchCustomEvent(VideoEvents.AD_END);
-       }
+      if (data['event'] === 'ads-ad-started') {
+        this.element.dispatchCustomEvent(VideoEvents.AD_START);
+      }
 
-       if (data.event === 'volumechange') {
-         if (data.muted !== undefined) {
-           this.muted_ = data.muted;
-           const evt = this.muted_ ? VideoEvents.MUTED : VideoEvents.UNMUTED;
-           this.element.dispatchCustomEvent(evt);
-         }
-       }
-     }
+      if (data['event'] === 'ads-ad-ended') {
+        this.element.dispatchCustomEvent(VideoEvents.AD_END);
+      }
+
+      if (data['event'] === 'volumechange') {
+        if (data['muted'] !== undefined) {
+          this.muted_ = data['muted'];
+          const evt = this.muted_ ? VideoEvents.MUTED : VideoEvents.UNMUTED;
+          this.element.dispatchCustomEvent(evt);
+        }
+      }
+    }
   }
 
   /**
@@ -207,13 +217,13 @@ class AmpBrightcove extends AMP.BaseElement {
         this.element);
     const embed = (this.element.getAttribute('data-embed') || 'default');
 
-    this.playerId = (this.element.getAttribute('data-player') ||
-        this.element.getAttribute('data-player-id') ||
-        'default');
+    this.playerId_ = (this.element.getAttribute('data-player') ||
+      this.element.getAttribute('data-player-id') ||
+      'default');
 
-    let src = `https://players.brightcove.net/${encodeURIComponent(account)}`
-      + `/${encodeURIComponent(this.playerId)}`
-      + `_${encodeURIComponent(embed)}/index.html`;
+    let src = `https://players.brightcove.net/${encodeURIComponent(account)}` +
+      `/${encodeURIComponent(this.playerId_)}` +
+      `_${encodeURIComponent(embed)}/index.html`;
 
     if (this.element.getAttribute('data-playlist-id')) {
       src += '?playlistId=';
@@ -237,9 +247,9 @@ class AmpBrightcove extends AMP.BaseElement {
     const embed = mutations['data-embed'];
     const playlistId = mutations['data-playlist-id'];
     const videoId = mutations['data-video-id'];
-    if (account !== undefined || playerId !== undefined
-        || playlistId !== undefined || embed !== undefined
-        || videoId !== undefined) {
+    if (account !== undefined || playerId !== undefined ||
+      playlistId !== undefined || embed !== undefined ||
+      videoId !== undefined) {
       if (this.iframe_) {
         this.iframe_.src = this.getIframeSrc_();
       }
@@ -250,7 +260,7 @@ class AmpBrightcove extends AMP.BaseElement {
   encodeId_(id) {
     /* id is either a Brightcove-assigned id, or a customer-generated reference id.
       reference ids are prefixed 'ref:' and the colon must be preserved unencoded */
-    if (id.substring(0,4) === 'ref:') {
+    if (id.substring(0, 4) === 'ref:') {
       return `ref:${encodeURIComponent(id.substring(4))}`;
     } else {
       return encodeURIComponent(id);
@@ -260,7 +270,7 @@ class AmpBrightcove extends AMP.BaseElement {
   /** @override */
   pauseCallback() {
     if (this.iframe_ && this.iframe_.contentWindow &&
-        this.hasAmpSupport_ && this.playing_) {
+      this.hasAmpSupport_ && this.playing_) {
       this.pause();
     }
   }
@@ -275,14 +285,18 @@ class AmpBrightcove extends AMP.BaseElement {
 
   /** @override */
   unlayoutCallback() {
-    if (!this.hasAmpSupport_) {
-      if (this.iframe_) {
-        removeElement(this.iframe_);
-        this.iframe_ = null;
-      }
-      return true;
+    if (this.iframe_) {
+      removeElement(this.iframe_);
+      this.iframe_ = null;
     }
-    return false;
+    if (this.unlistenMessage_) {
+      this.unlistenMessage_();
+    }
+
+    this.playerReadyPromise_ = new Promise(resolve => {
+      this.playerReadyResolver_ = resolve;
+    });
+    return true; // Call layoutCallback again.
   }
 
   /**
