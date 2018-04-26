@@ -92,7 +92,7 @@ class AmpBrightcove extends AMP.BaseElement {
       dev().warn(TAG,
         `Did not receive ready callback from player ${this.playerId}.`
         + ' Ensure it has the videojs-amp-support plugin configured.');
-    }, 5000);
+    }, 3000);
 
     this.playerReadyResolver_(this.iframe_);
   }
