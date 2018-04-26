@@ -32,7 +32,6 @@ import {Services} from '../../../src/services';
 import {isLayoutSizeDefined} from '../../../src/layout';
 import {startsWith} from '../../../src/string';
 import {tryParseJson} from '../../../src/json';
-import {isObject} from '../../../src/types';
 
 const TAG = 'amp-brightcove';
 
