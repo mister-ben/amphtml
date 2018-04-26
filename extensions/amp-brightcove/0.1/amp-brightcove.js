@@ -30,6 +30,9 @@ import {
 import {VideoEvents} from '../../../src/video-interface';
 import {Services} from '../../../src/services';
 import {isLayoutSizeDefined} from '../../../src/layout';
+import {startsWith} from '../../../src/string';
+import {tryParseJson} from '../../../src/json';
+import {isObject} from '../../../src/types';
 
 const TAG = 'amp-brightcove';
 
@@ -137,11 +140,14 @@ class AmpBrightcove extends AMP.BaseElement {
          event.source != this.iframe_.contentWindow) {
        return;
      }
-     if (!event.data ||
-         !(isObject(event.data) || event.data.indexOf('{') == 0)) {
-       return;  // Doesn't look like JSON.
+     if (!getData(event) || !(isObject(getData(event))
+         || startsWith(/** @type {string} */ (getData(event)), '{'))) {
+       return; // Doesn't look like JSON.
      }
-     const data = isObject(event.data) ? event.data : tryParseJson(event.data);
+     /** @const {?JsonObject} */
+     const data = /** @type {?JsonObject} */ (isObject(getData(event))
+       ? getData(event)
+       : tryParseJson(getData(event)));
      if (data === undefined) {
        return; // We only process valid JSON.
      }
