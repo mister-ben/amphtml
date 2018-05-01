@@ -28,6 +28,7 @@ branches:
     - canary
     - /^amp-release-.*$/
     - /^greenkeeper/.*$/
+    - videointerface-brightcov*
 addons:
   chrome: stable
   hosts:
