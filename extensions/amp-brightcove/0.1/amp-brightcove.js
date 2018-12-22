@@ -408,6 +408,11 @@ class AmpBrightcove extends AMP.BaseElement {
   }
 
   /** @override */
+  seekTo(timeSeconds) {
+    this.sendCommand_('currentTime', timeSeconds);
+  }
+
+  /** @override */
   preimplementsAutoFullscreen() {
     return false;
   }
