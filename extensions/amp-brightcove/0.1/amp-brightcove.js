@@ -17,7 +17,7 @@
 import {Deferred} from '../../../src/utils/promise';
 import {Services} from '../../../src/services';
 import {VideoEvents} from '../../../src/video-interface';
-import {addParamsToUrl} from '../../../src/url';
+import {addParamToUrl, addParamsToUrl} from '../../../src/url';
 import {
   createFrameFor,
   isJsonOrObj,
@@ -34,6 +34,11 @@ import {
   isFullscreenElement,
   removeElement,
 } from '../../../src/dom';
+import {
+  getConsentPolicyInfo,
+  getConsentPolicySharedData,
+  getConsentPolicyState,
+} from '../../../src/consent';
 import {getData, listen} from '../../../src/event-helper';
 import {installVideoManagerForDoc} from '../../../src/service/video-manager-impl';
 import {isLayoutSizeDefined} from '../../../src/layout';
@@ -67,6 +72,9 @@ class AmpBrightcove extends AMP.BaseElement {
 
     /** @private {?boolean}  */
     this.hasAmpSupport_ = false;
+
+    /** @private {?Promise} */
+    this.layoutPromise_ = null;
 
     /** @private {?Promise} */
     this.playerReadyPromise_ = null;
@@ -131,17 +139,53 @@ class AmpBrightcove extends AMP.BaseElement {
     this.playerReadyResolver_(this.iframe_);
   }
 
+  /**
+   * @return {!Promise<?CONSENT_POLICY_STATE>}
+   */
+  getConsentState() {
+    const consentPolicyId = super.getConsentPolicy();
+    return consentPolicyId
+      ? getConsentPolicyState(this.element, consentPolicyId)
+      : Promise.resolve(null);
+  }
+
   /** @override */
   layoutCallback() {
-    const iframe = createFrameFor(this, this.getIframeSrc_());
+    if (this.layoutPromise_) {
+      return this.layoutPromise_;
+    }
 
-    this.iframe_ = iframe;
+    // Remodelled on amp-ad to get consent state and string if used
+    const consentPromise = this.getConsentState();
+    const consentPolicyId = super.getConsentPolicy();
+    const consentStringPromise = consentPolicyId
+      ? getConsentPolicyInfo(this.element, consentPolicyId)
+      : Promise.resolve(null);
+    const sharedDataPromise = consentPolicyId
+      ? getConsentPolicySharedData(this.element, consentPolicyId)
+      : Promise.resolve(null);
 
-    this.unlistenMessage_ = listen(this.win, 'message', (e) =>
-      this.handlePlayerMessage_(e)
-    );
+    this.layoutPromise_ = Promise.all([
+      consentPromise,
+      sharedDataPromise,
+      consentStringPromise,
+    ]).then((consents) => {
+      const opt_context = dict({
+        'initialConsentState': consents[0],
+        'consentSharedData': consents[1],
+        'initialConsentValue': consents[2],
+      });
 
-    return this.loadPromise(iframe).then(() => this.playerReadyPromise_);
+      const iframe = createFrameFor(this, this.getIframeSrc_(opt_context));
+
+      this.iframe_ = iframe;
+
+      this.unlistenMessage_ = listen(this.win, 'message', (e) =>
+        this.handlePlayerMessage_(e)
+      );
+
+      return this.loadPromise(iframe).then(() => this.playerReadyPromise_);
+    });
   }
 
   /**
@@ -268,7 +312,7 @@ class AmpBrightcove extends AMP.BaseElement {
    * @return {string}
    * @private
    */
-  getIframeSrc_() {
+  getIframeSrc_(opts = {}) {
     const {element: el} = this;
     const account = userAssert(
       el.getAttribute('data-account'),
@@ -282,7 +326,7 @@ class AmpBrightcove extends AMP.BaseElement {
       el.getAttribute('data-player-id') ||
       'default';
 
-    const src =
+    let src =
       `https://players.brightcove.net/${encodeURIComponent(account)}` +
       `/${encodeURIComponent(this.playerId_)}` +
       `_${encodeURIComponent(embed)}/index.html` +
@@ -299,6 +343,24 @@ class AmpBrightcove extends AMP.BaseElement {
       el.setAttribute(
         'data-param-referrer',
         this.urlReplacements_.expandUrlSync(customReferrer)
+      );
+    }
+
+    if (opts.initialConsentState) {
+      src = addParamToUrl(
+        src,
+        'ampInitialConsentState',
+        opts.initialConsentState
+      );
+    }
+    if (opts.consentSharedData) {
+      src = addParamToUrl(src, 'ampConsentSharedData', opts.consentSharedData);
+    }
+    if (opts.initialConsentValue) {
+      src = addParamToUrl(
+        src,
+        'ampInitialConsentValue',
+        opts.initialConsentValue
       );
     }
 
