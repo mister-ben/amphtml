@@ -191,7 +191,7 @@ export class VideoManager {
 
     // Don't register duplicate entries
     if (this.entries_.some((entry) => entry.video === video)) {
-      console.log('would have returned because duplciate');
+      dev().info('would have returned because duplciate');
       // return;
     }
 
